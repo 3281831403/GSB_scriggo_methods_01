@@ -55,9 +55,24 @@ func (x definedType) Implements(y reflect.Type) bool {
 	return Implements(x, y)
 }
 
-func (x definedType) MethodByName(string) (reflect.Method, bool) {
-	// TODO.
-	return reflect.Method{}, false
+func (x definedType) MethodByName(name string) (reflect.Method, bool) {
+	t := x.Type
+	if t.Kind() != reflect.Struct {
+		// The underlying type is not a struct type, so its method set is
+		// also the method set of the defined type. This is the case, for
+		// example, of a defined type whose underlying type is an interface
+		// type.
+		return t.MethodByName(name)
+	}
+	// The method set of a defined type with a struct underlying type
+	// consists of the methods promoted from the embedded fields of the
+	// struct, because Scriggo does not currently support method
+	// declarations on defined types.
+	goType := t
+	if st, ok := t.(runtime.ScriggoType); ok {
+		goType = st.GoType()
+	}
+	return promotedMethodByName(t, goType, name)
 }
 
 func (x definedType) String() string {

@@ -120,6 +120,12 @@ func (x structType) Implements(y reflect.Type) bool {
 	return Implements(x, y)
 }
 
+func (x structType) MethodByName(name string) (reflect.Method, bool) {
+	// The method set of a Scriggo struct type consists of the methods
+	// promoted from its embedded fields.
+	return promotedMethodByName(x, x.Type, name)
+}
+
 func (x structType) Name() string {
 	return "" // composite types do not have a name.
 }

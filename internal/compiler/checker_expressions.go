@@ -15,6 +15,7 @@ import (
 
 	"github.com/open2b/scriggo/ast"
 	"github.com/open2b/scriggo/internal/compiler/types"
+	"github.com/open2b/scriggo/internal/runtime"
 )
 
 var untypedBoolTypeInfo = &typeInfo{Type: boolType, Properties: propertyUntyped}
@@ -2498,7 +2499,22 @@ func (tc *typechecker) checkMethodExpression(t *typeInfo, expr *ast.Selector) *t
 		ti.Type = removeEnvArg(methExpr.Type(), false)
 		ti.value = methExpr
 	} else {
-		ti.Type = removeEnvArg(method.Type, true)
+		mt := method.Type
+		if _, ok := t.Type.(runtime.ScriggoType); ok {
+			// The receiver of the method of the gc compiled type is the
+			// underlying type; replace it with the Scriggo type.
+			in := make([]reflect.Type, mt.NumIn())
+			in[0] = t.Type
+			for i := 1; i < len(in); i++ {
+				in[i] = mt.In(i)
+			}
+			out := make([]reflect.Type, mt.NumOut())
+			for i := range out {
+				out[i] = mt.Out(i)
+			}
+			mt = tc.types.FuncOf(in, out, mt.IsVariadic())
+		}
+		ti.Type = removeEnvArg(mt, true)
 		ti.value = method.Func
 	}
 
@@ -2549,11 +2565,27 @@ func (tc *typechecker) checkMethodValue(t *typeInfo, expr *ast.Selector) (*typeI
 	}
 
 	return &typeInfo{
-		Type:       removeEnvArg(tc.types.Zero(typ).MethodByName(name).Type(), false),
+		Type:       removeEnvArg(tc.methodValueType(typ, name), false),
 		value:      method.Func, // the function value has the receiver as first parameter.
 		MethodType: methodValueConcrete,
 		Properties: propertyIsNative | propertyHasValue,
 	}, true
+}
+
+// methodValueType returns the type of the method value with the given name
+// on the type typ.
+func (tc *typechecker) methodValueType(typ reflect.Type, name string) reflect.Type {
+	mv := tc.types.Zero(typ).MethodByName(name)
+	if !mv.IsValid() && typ.Kind() == reflect.Pointer {
+		// The method set of a pointer to a Scriggo type cannot be
+		// retrieved from a reflect value, because the reflect package does
+		// not compute the method set of a pointer to a runtime-created
+		// type. As Scriggo does not currently support method declarations,
+		// the method set of the pointer type is the same as the method set
+		// of the element type.
+		mv = tc.types.Zero(typ.Elem()).MethodByName(name)
+	}
+	return mv.Type()
 }
 
 // checkKeySelector checks a key selector.

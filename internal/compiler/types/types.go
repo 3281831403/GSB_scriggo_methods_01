@@ -161,7 +161,36 @@ func ConvertibleTo(x, y reflect.Type) bool {
 // Implements reports whether x implements the interface type y.
 func Implements(x, y reflect.Type) bool {
 	if _, ok := x.(runtime.ScriggoType); ok {
-		return y.NumMethod() == 0
+		// x is a Scriggo type, so its method set cannot be retrieved using
+		// the Implements method of reflect.Type. The method set of x
+		// consists of the methods promoted from the embedded fields of its
+		// underlying type, as Scriggo does not currently support method
+		// declarations on defined types.
+		n := y.NumMethod()
+		for i := range n {
+			m := y.Method(i)
+			xm, ok := x.MethodByName(m.Name)
+			if !ok {
+				return false
+			}
+			xt := xm.Type
+			if x.Kind() != reflect.Interface {
+				// Remove the receiver from the method type.
+				in := make([]reflect.Type, xt.NumIn()-1)
+				for j := range in {
+					in[j] = xt.In(j + 1)
+				}
+				out := make([]reflect.Type, xt.NumOut())
+				for j := range out {
+					out[j] = xt.Out(j)
+				}
+				xt = reflect.FuncOf(in, out, xt.IsVariadic())
+			}
+			if !identical(xt, m.Type, false, false) {
+				return false
+			}
+		}
+		return true
 	}
 	if _, ok := y.(runtime.ScriggoType); ok {
 		return true

@@ -45,6 +45,16 @@ func (x ptrType) Implements(y reflect.Type) bool {
 	return Implements(x, y)
 }
 
+func (x ptrType) MethodByName(name string) (reflect.Method, bool) {
+	// The method set of a pointer to a Scriggo type is the same as the
+	// method set of the element type, because Scriggo does not currently
+	// support method declarations, so the methods of the element type are
+	// all promoted methods. Note that the method set of the underlying Go
+	// pointer type cannot be used because the reflect package does not
+	// compute the method set of a pointer to a runtime-created type.
+	return x.elem.MethodByName(name)
+}
+
 func (x ptrType) Name() string {
 	return "" // composite types do not have a name.
 }
